@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 type Memory<'a> = &'a mut [i32];
 const STEP_SIZE: usize = 4;
 
@@ -29,15 +31,33 @@ impl<'a> Computer<'a> {
 
 fn main() {
     let input = std::fs::read_to_string("input.txt").expect("Input file not found.");
-    let mut parsed_input = input.split(",").filter_map(|s| s.parse::<i32>().ok()).collect::<Vec<_>>();
+    let parsed_input = input.split(",").filter_map(|s| s.parse::<i32>().ok()).collect::<Vec<_>>();
+    let mut memory1 = parsed_input.clone(); 
     //Fix up input for part1
-    parsed_input[1] = 12;
-    parsed_input[2] = 2;
-    let mut computer = Computer{ pc: 0, memory: &mut parsed_input};
+    memory1[1] = 12;
+    memory1[2] = 2;
+    let mut computer = Computer{ pc: 0, memory: &mut memory1};
     while !computer.finished() {
         computer.step();
     }
     println!("{}", computer.result());
+
+    let mut result2 = 0;
+    for (noun, verb) in (0..=99).tuple_combinations() {
+        let mut memory = parsed_input.clone();
+        memory[1] = noun;
+        memory[2] = verb;
+
+        let mut computer = Computer{ pc: 0, memory: &mut memory};
+        while !computer.finished() {
+            computer.step();
+        }
+        if computer.result() == 19690720 {
+            result2 = 100 * noun + verb;
+            break;
+        }
+    }
+    println!("{}", result2);
 }
 
 
