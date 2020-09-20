@@ -65,52 +65,23 @@ fn manhatten_distance(p1: &Point, p2: &Point) -> usize {
     ((p1.x - p2.x).abs() + (p1.y - p2.y).abs()) as usize
 }
 
-enum Direction {
-    Right,
-    Left,
-    Up,
-    Down,
-}
-
 fn move_point(start: &Point, modification: &str) -> Point {
     let mut stream = modification.chars();
-    let direction = match stream.next().unwrap() {
-        'R' => Direction::Right,
-        'L' => Direction::Left,
-        'U' => Direction::Up,
-        'D' => Direction::Down,
+    let offset = match stream.next().unwrap() {
+        'R' => (1, 0),
+        'L' => (-1, 0),
+        'U' => (0, 1),
+        'D' => (0, -1),
         _ => unreachable!(),
     };
 
     let rest: String = stream.collect();
     let step_count = rest.parse::<isize>().unwrap();
 
-    match direction {
-        Direction::Right => {
-            return Point {
-                x: start.x + step_count,
-                y: start.y,
-            }
-        }
-        Direction::Left => {
-            return Point {
-                x: start.x - step_count,
-                y: start.y,
-            }
-        }
-        Direction::Up => {
-            return Point {
-                x: start.x,
-                y: start.y + step_count,
-            }
-        }
-        Direction::Down => {
-            return Point {
-                x: start.x,
-                y: start.y - step_count,
-            }
-        }
-    }
+    return Point {
+        x: start.x + offset.0 * step_count,
+        y: start.y + offset.1 * step_count,
+    };
 }
 
 fn parse(input: &str) -> (Vec<Line>, Vec<Line>) {
@@ -139,19 +110,15 @@ fn parse(input: &str) -> (Vec<Line>, Vec<Line>) {
 }
 
 fn closest_distance(center: &Point, others: &Vec<Point>) -> Option<usize> {
-    others
-        .iter()
-        .map(|p| manhatten_distance(center, p))
-        .min()
+    others.iter().map(|p| manhatten_distance(center, p)).min()
 }
-
 
 fn intersect_distance(line: &Line, point: &Point) -> Option<usize> {
     //Point on line in vertical direction.
     if line.start.x == line.end.x && point.x == line.start.x {
-        return Some((line.start.y - point.y).abs() as usize)
+        return Some((line.start.y - point.y).abs() as usize);
     } else if line.start.y == line.end.y && point.y == line.start.y {
-        return Some((line.start.x - point.x).abs() as usize)
+        return Some((line.start.x - point.x).abs() as usize);
     }
     None
 }
@@ -160,7 +127,7 @@ fn calculate_distance_to_intersection(line: &Vec<Line>, intersection: &Point) ->
     let mut sum_distance = 0;
     for part in line {
         if let Some(dist) = intersect_distance(part, intersection) {
-            return Some(sum_distance + dist)
+            return Some(sum_distance + dist);
         }
         sum_distance += manhatten_distance(&part.start, &part.end); //length of the line is the same as the manhatten distance of its two points.
     }
@@ -180,13 +147,18 @@ fn main() {
     }
 
     //Part1
-    println!("{:?}", closest_distance(&Point{x: 0, y: 0}, &all_intersections));
+    println!(
+        "{:?}",
+        closest_distance(&Point { x: 0, y: 0 }, &all_intersections)
+    );
 
     //Part2
     let mut min_distance = usize::MAX;
     for intersection in all_intersections {
-        let first_line_dist = calculate_distance_to_intersection(&parse_input.0, &intersection).unwrap();
-        let second_line_dist = calculate_distance_to_intersection(&parse_input.1, &intersection).unwrap();
+        let first_line_dist =
+            calculate_distance_to_intersection(&parse_input.0, &intersection).unwrap();
+        let second_line_dist =
+            calculate_distance_to_intersection(&parse_input.1, &intersection).unwrap();
         let sum = first_line_dist + second_line_dist;
         if sum < min_distance {
             min_distance = sum;
