@@ -1,9 +1,11 @@
-#[derive(Copy, Clone)]
+const SIZE: usize = 6;
+
 struct Number {
-    parts: [u8; 6],
+    parts: [u8; SIZE],
 }
 
 impl Number {
+    //TODO: We could implement the try from trait instead of this function too...
     fn new(number: u32) -> Option<Number> {
         let mut number = number;
         if number < 100000 || number > 999999 {
@@ -20,14 +22,6 @@ impl Number {
             }
         }
         Some(Number { parts })
-    }
-
-    fn to_number(&self) -> u32 {
-        self.parts
-            .iter()
-            .enumerate()
-            .map(|(i, val)| 10u32.pow(i as u32) * *val as u32)
-            .sum()
     }
 
     fn has_doubles(&self) -> bool {
@@ -55,49 +49,80 @@ impl Number {
         if double && !longer {
             return true;
         }
-        return false
+        return false;
     }
-}
 
-//assumes acc is already in our password format!
-fn next(mut acc: [u8; 6]) -> Option<[u8; 6]> {
-    let mut idx = 0;
-    while idx != acc.len() {
-        if acc[idx] < 9 {
-            acc[idx] += 1;
-            for prev in 0..idx {
-                acc[prev] = acc[idx];
+    fn to_u32(&self) -> u32 {
+        self.parts
+            .iter()
+            .enumerate()
+            .map(|(i, val)| 10u32.pow(i as u32) * *val as u32)
+            .sum()
+    }
+
+    fn next(&self) -> Option<Self> {
+        let mut idx = 0;
+        let mut new_parts = self.parts;
+        while idx != SIZE {
+            if new_parts[idx] < 9 {
+                new_parts[idx] += 1;
+                for prev in 0..idx {
+                    new_parts[prev] = new_parts[idx];
+                }
+                return Some(Number { parts: new_parts });
             }
-            return Some(acc);
+            idx += 1;
         }
-        idx += 1;
+        return None;
     }
-    return None;
 }
 
-impl Iterator for Number {
+impl IntoIterator for Number {
     type Item = Self;
-    fn next(&mut self) -> Option<Self> {
-        if self.to_number() == 0 {
-            return None
-        }
+    type IntoIter = NumberIterator;
 
-        let res = Number{parts: self.parts };
-        if let Some(new_part) = next(self.parts) {
-            self.parts = new_part;
-        } else {
-            self.parts = [0; 6]; //poison value to know there was no more number.
+    fn into_iter(self) -> Self::IntoIter {
+        NumberIterator {
+            current: Some(self),
+            limit: None,
         }
-        Some(res)
+    }
+}
+
+struct NumberIterator {
+    current: Option<Number>,
+    limit: Option<u32>,
+}
+
+impl Iterator for NumberIterator {
+    type Item = Number;
+    fn next(&mut self) -> Option<Self::Item> {
+        let res = self.current.take();
+        if let Some(ref num) = res {
+            self.current = {
+                let mut temp = num.next();
+                if let Some(limit) = self.limit {
+                    temp = temp.filter(|t| t.to_u32() <= limit);
+                }
+                temp
+            };
+        }
+        res
+    }
+}
+
+impl NumberIterator {
+    fn set_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
     }
 }
 
 fn main() {
-    let test_number = Number::new(254032).expect("should be valid");
+    let test_number = Number::new(254032).expect("Not a number");
     let mut count_p1 = 0;
     let mut count_p2 = 0;
-    for num in test_number.into_iter() {
-        if num.to_number() > 789860 { break; }
+    for num in test_number.into_iter().set_limit(789860) {
         if num.has_doubles() {
             count_p1 += 1;
         }
@@ -117,18 +142,19 @@ mod test {
     fn number_test() {
         let number = 123456;
         let num = Number::new(number).expect("should work");
-        assert_eq!(number, num.to_number());
+        assert_eq!(number, num.to_u32());
     }
 
     #[test]
     fn number_next() {
-        let mut num = Number::new(123456).expect("should work");
-        num.next();
-        assert_eq!(123457, num.next().unwrap().to_number());
+        let num = Number::new(123456).expect("should work");
+        let mut iter = num.into_iter();
+        assert_eq!(123456, iter.next().unwrap().to_u32());
 
-        let mut num2 = Number::new(899999).expect("should work");
-        num2.next();
-        assert_eq!(999999, num2.next().unwrap().to_number())
+        let num2 = Number::new(899999).expect("should work");
+        let mut iter2 = num2.into_iter();
+        iter2.next();
+        assert_eq!(999999, iter2.next().unwrap().to_u32())
     }
 
     #[test]
@@ -140,7 +166,7 @@ mod test {
     #[test]
     fn number_test2() {
         let num = Number::new(254032).expect("should work");
-        assert_eq!(num.to_number(), 255555);
+        assert_eq!(255555, num.to_u32());
         assert!(num.has_doubles());
     }
 
