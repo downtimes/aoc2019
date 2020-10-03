@@ -30,26 +30,24 @@ impl Number {
 
     //Have seen a hashmap used here pretty cleverly. This code is definitely not readable and should be reworked.
     fn has_doubles_no_triples(&self) -> bool {
-        let mut double = false;
-        let mut longer = false;
-        let mut last = self.parts[0];
-        for &p in self.parts[1..].into_iter() {
-            if p == last && !double {
-                double = true
-            } else if p == last && double {
-                longer = true;
-            } else if p != last && double && !longer {
-                return true;
-            } else if p != last {
-                double = false;
-                longer = false;
+        let mut follows = 0;
+        let mut last_num = self.parts[0];
+        for &curr in self.parts[1..].into_iter() {
+            if curr == last_num {
+                follows += 1;
+            } else {
+                if follows == 1 {
+                    return true;
+                }
+                follows = 0;
             }
-            last = p;
+            last_num = curr;
         }
-        if double && !longer {
-            return true;
+        //check for last 2 numbers equality 
+        if follows == 1 {
+            return true
         }
-        return false;
+        false
     }
 
     fn to_u32(&self) -> u32 {
