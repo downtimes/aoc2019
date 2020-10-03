@@ -43,9 +43,9 @@ impl Number {
             }
             last_num = curr;
         }
-        //check for last 2 numbers equality 
+        //check for last 2 numbers equality
         if follows == 1 {
-            return true
+            return true;
         }
         false
     }
@@ -95,15 +95,12 @@ struct NumberIterator {
 impl Iterator for NumberIterator {
     type Item = Number;
     fn next(&mut self) -> Option<Self::Item> {
-        let res = self.current.take();
+        let mut res = self.current.take();
+        if let Some(limit) = self.limit {
+            res = res.filter(|num| num.to_u32() <= limit);
+        }
         if let Some(ref num) = res {
-            self.current = {
-                let mut temp = num.next();
-                if let Some(limit) = self.limit {
-                    temp = temp.filter(|t| t.to_u32() <= limit);
-                }
-                temp
-            };
+            self.current = num.next();
         }
         res
     }
@@ -153,6 +150,13 @@ mod test {
         let mut iter2 = num2.into_iter();
         iter2.next();
         assert_eq!(999999, iter2.next().unwrap().to_u32())
+    }
+
+    #[test]
+    fn limit_with_lower() {
+        let num = Number::new(111111).expect("should work");
+        let mut iter = num.into_iter().set_limit(0);
+        assert!(iter.next().is_none())
     }
 
     #[test]
