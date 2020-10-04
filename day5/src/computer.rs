@@ -9,11 +9,10 @@ pub struct Computer<'a> {
 }
 
 enum Instruction {
-    Plus(Plus),
-    Multiply(Multiply),
+    Binary(Binary),
     Input(Input),
     Output(Output),
-    Halt(Halt),
+    Halt,
     Jump(Jump),
     Comparison(Comparison),
 }
@@ -27,7 +26,7 @@ struct Comparison {
     kind: ComparisonKind,
     target: usize,
     op1: usize,
-    op2: usize
+    op2: usize,
 }
 
 impl Comparison {
@@ -57,32 +56,33 @@ impl Jump {
             JumpCondition::True => computer.memory[self.cond] != 0,
             JumpCondition::False => computer.memory[self.cond] == 0,
         };
-        computer.pc = if condition { computer.memory[self.to] as usize } else { computer.pc + 3 };
+        computer.pc = if condition {
+            computer.memory[self.to] as usize
+        } else {
+            computer.pc + 3
+        };
     }
 }
 
-struct Plus {
+enum BinaryKind {
+    Multiply,
+    Plus,
+}
+
+struct Binary {
+    kind: BinaryKind,
     target: usize,
     op1: usize,
     op2: usize,
 }
 
-impl Plus {
+impl Binary {
     fn execute(self, computer: &mut Computer) {
-        computer.memory[self.target] = computer.memory[self.op1] + computer.memory[self.op2];
-        computer.pc += 4;
-    }
-}
-
-struct Multiply {
-    target: usize,
-    op1: usize,
-    op2: usize,
-}
-
-impl Multiply {
-    fn execute(self, computer: &mut Computer) {
-        computer.memory[self.target] = computer.memory[self.op1] * computer.memory[self.op2];
+        let res = match self.kind {
+            BinaryKind::Multiply => computer.memory[self.op1] * computer.memory[self.op2],
+            BinaryKind::Plus => computer.memory[self.op1] + computer.memory[self.op2],
+        };
+        computer.memory[self.target] = res;
         computer.pc += 4;
     }
 }
@@ -113,12 +113,6 @@ impl Output {
         println!("{}", computer.memory[self.target]);
         computer.pc += 2;
     }
-}
-
-struct Halt;
-
-impl Halt {
-    fn execute(self, _computer: &mut Computer) {}
 }
 
 #[derive(Debug)]
@@ -159,7 +153,7 @@ impl<'a> Computer<'a> {
         self.result()
     }
 
-    fn load_parameter(&self, offset: usize, mode: Mode) -> usize {
+    fn parameter_index(&self, offset: usize, mode: Mode) -> usize {
         match mode {
             Mode::Position => self.memory[self.pc + offset] as usize,
             Mode::Immediate => self.pc + offset,
@@ -170,61 +164,52 @@ impl<'a> Computer<'a> {
         let split = split_instruction(self.memory[self.pc]);
 
         match split {
-            (1, mode1, mode2, mode3) => {
-                return Instruction::Plus(Plus {
-                    target: self.load_parameter(3, mode3),
-                    op1: self.load_parameter(1, mode1),
-                    op2: self.load_parameter(2, mode2),
-                })
-            }
-            (2, mode1, mode2, mode3) => {
-                return Instruction::Multiply(Multiply {
-                    target: self.load_parameter(3, mode3),
-                    op1: self.load_parameter(1, mode1),
-                    op2: self.load_parameter(2, mode2),
+            (1, mode1, mode2, mode3) | (2, mode1, mode2, mode3) => {
+                return Instruction::Binary(Binary {
+                    kind: if split.0 == 1 {
+                        BinaryKind::Plus
+                    } else {
+                        BinaryKind::Multiply
+                    },
+                    target: self.parameter_index(3, mode3),
+                    op1: self.parameter_index(1, mode1),
+                    op2: self.parameter_index(2, mode2),
                 })
             }
             (3, mode1, _, _) => {
                 return Instruction::Input(Input {
-                    target: self.load_parameter(1, mode1),
+                    target: self.parameter_index(1, mode1),
                 })
             }
             (4, mode1, _, _) => {
                 return Instruction::Output(Output {
-                    target: self.load_parameter(1, mode1),
+                    target: self.parameter_index(1, mode1),
                 })
             }
-            (5, mode1, mode2, _) => {
+            (5, mode1, mode2, _) | (6, mode1, mode2, _) => {
                 return Instruction::Jump(Jump {
-                    kind: JumpCondition::True,
-                    cond: self.load_parameter(1, mode1),
-                    to: self.load_parameter(2, mode2),
+                    kind: if split.0 == 5 {
+                        JumpCondition::True
+                    } else {
+                        JumpCondition::False
+                    },
+                    cond: self.parameter_index(1, mode1),
+                    to: self.parameter_index(2, mode2),
                 })
             }
-            (6, mode1, mode2, _) => {
-                return Instruction::Jump(Jump {
-                    kind: JumpCondition::False,
-                    cond: self.load_parameter(1, mode1),
-                    to: self.load_parameter(2, mode2),
-                })
-            }
-            (7, mode1, mode2, mode3) => {
+            (7, mode1, mode2, mode3) | (8, mode1, mode2, mode3) => {
                 return Instruction::Comparison(Comparison {
-                    kind: ComparisonKind::LessThan,
-                    target: self.load_parameter(3, mode3),
-                    op1: self.load_parameter(1, mode1),
-                    op2: self.load_parameter(2, mode2),
+                    kind: if split.0 == 7 {
+                        ComparisonKind::LessThan
+                    } else {
+                        ComparisonKind::Equals
+                    },
+                    target: self.parameter_index(3, mode3),
+                    op1: self.parameter_index(1, mode1),
+                    op2: self.parameter_index(2, mode2),
                 })
             }
-            (8, mode1, mode2, mode3) => {
-                return Instruction::Comparison(Comparison {
-                    kind: ComparisonKind::Equals,
-                    target: self.load_parameter(3, mode3),
-                    op1: self.load_parameter(1, mode1),
-                    op2: self.load_parameter(2, mode2),
-                })
-            }
-            (99, _, _, _) => return Instruction::Halt(Halt {}),
+            (99, _, _, _) => return Instruction::Halt,
             a => {
                 print!("{:?}", a);
                 unreachable!("Bug in intcode program");
@@ -236,9 +221,8 @@ impl<'a> Computer<'a> {
         let ins = self.parse_instruction();
         //TODO: this is shit does rust have no abstraction to not require this here?
         match ins {
-            Instruction::Halt(h) => h.execute(self),
-            Instruction::Plus(p) => p.execute(self),
-            Instruction::Multiply(m) => m.execute(self),
+            Instruction::Halt => (),
+            Instruction::Binary(b) => b.execute(self),
             Instruction::Output(o) => o.execute(self),
             Instruction::Input(i) => i.execute(self),
             Instruction::Jump(j) => j.execute(self),
