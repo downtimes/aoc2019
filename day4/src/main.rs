@@ -11,7 +11,7 @@ impl Number {
         if number < 100000 || number > 999999 {
             return None;
         }
-        let mut parts = [0u8; 6];
+        let mut parts = [0u8; SIZE];
         for part in &mut parts[..] {
             *part = (number % 10) as u8;
             number /= 10;
@@ -62,7 +62,7 @@ impl Number {
         let mut idx = 0;
         let mut new_parts = self.parts;
         while idx != SIZE {
-            if new_parts[idx] < 9 {
+            if new_parts[idx] < 10 {
                 new_parts[idx] += 1;
                 for prev in 0..idx {
                     new_parts[prev] = new_parts[idx];
