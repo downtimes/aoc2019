@@ -8,111 +8,44 @@ pub struct Computer<'a> {
     memory: Memory<'a>,
 }
 
+enum BinaryKind {
+    Multiply,
+    Plus,
+}
 enum Instruction {
-    Binary(Binary),
-    Input(Input),
-    Output(Output),
+    Binary {
+        kind: BinaryKind,
+        target: usize,
+        op1: usize,
+        op2: usize,
+    },
+    Input {
+        target: usize,
+    },
+    Output {
+        target: usize,
+    },
     Halt,
-    Jump(Jump),
-    Comparison(Comparison),
-}
-
-enum ComparisonKind {
-    LessThan,
-    Equals,
-}
-
-struct Comparison {
-    kind: ComparisonKind,
-    target: usize,
-    op1: usize,
-    op2: usize,
-}
-
-impl Comparison {
-    fn execute(self, computer: &mut Computer) {
-        let result = match self.kind {
-            ComparisonKind::Equals => computer.memory[self.op1] == computer.memory[self.op2],
-            ComparisonKind::LessThan => computer.memory[self.op1] < computer.memory[self.op2],
-        };
-        computer.memory[self.target] = if result { 1 } else { 0 };
-        computer.pc += 4;
-    }
+    Jump {
+        kind: JumpCondition,
+        cond: usize,
+        to: usize,
+    },
+    Comparison {
+        kind: ComparisonKind,
+        target: usize,
+        op1: usize,
+        op2: usize,
+    },
 }
 
 enum JumpCondition {
     True,
     False,
 }
-struct Jump {
-    kind: JumpCondition,
-    cond: usize,
-    to: usize,
-}
-
-impl Jump {
-    fn execute(self, computer: &mut Computer) {
-        let condition = match self.kind {
-            JumpCondition::True => computer.memory[self.cond] != 0,
-            JumpCondition::False => computer.memory[self.cond] == 0,
-        };
-        computer.pc = if condition {
-            computer.memory[self.to] as usize
-        } else {
-            computer.pc + 3
-        };
-    }
-}
-
-enum BinaryKind {
-    Multiply,
-    Plus,
-}
-
-struct Binary {
-    kind: BinaryKind,
-    target: usize,
-    op1: usize,
-    op2: usize,
-}
-
-impl Binary {
-    fn execute(self, computer: &mut Computer) {
-        let res = match self.kind {
-            BinaryKind::Multiply => computer.memory[self.op1] * computer.memory[self.op2],
-            BinaryKind::Plus => computer.memory[self.op1] + computer.memory[self.op2],
-        };
-        computer.memory[self.target] = res;
-        computer.pc += 4;
-    }
-}
-
-struct Input {
-    target: usize,
-}
-
-impl Input {
-    fn execute(self, computer: &mut Computer) {
-        print!(">");
-        io::stdout().flush().unwrap();
-        let mut buf = String::new();
-        computer.memory[self.target] = match std::io::stdin().read_line(&mut buf) {
-            Ok(_) => buf.trim().parse::<i64>().expect("Input was no number"),
-            Err(_) => unimplemented!("Input was not possible"),
-        };
-        computer.pc += 2;
-    }
-}
-
-struct Output {
-    target: usize,
-}
-
-impl Output {
-    fn execute(self, computer: &mut Computer) {
-        println!("{}", computer.memory[self.target]);
-        computer.pc += 2;
-    }
+enum ComparisonKind {
+    LessThan,
+    Equals,
 }
 
 #[derive(Debug)]
@@ -122,13 +55,13 @@ enum Mode {
 }
 
 impl TryFrom<i64> for Mode {
-    type Error = &'static str;
+    type Error = String;
 
     fn try_from(value: i64) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Mode::Position),
             1 => Ok(Mode::Immediate),
-            _ => Err("Unknown instruction mode"),
+            x => Err(format!("Unknown instruction mode {}", x)),
         }
     }
 }
@@ -160,12 +93,70 @@ impl<'a> Computer<'a> {
         }
     }
 
+    fn execute_instruction(&mut self, ins: Instruction) {
+        let new_pc = match ins {
+            Instruction::Comparison {
+                kind,
+                target,
+                op1,
+                op2,
+            } => {
+                let result = match kind {
+                    ComparisonKind::Equals => self.memory[op1] == self.memory[op2],
+                    ComparisonKind::LessThan => self.memory[op1] < self.memory[op2],
+                };
+                self.memory[target] = if result { 1 } else { 0 };
+                self.pc + 4
+            }
+            Instruction::Jump { kind, cond, to } => {
+                let condition = match kind {
+                    JumpCondition::True => self.memory[cond] != 0,
+                    JumpCondition::False => self.memory[cond] == 0,
+                };
+                if condition {
+                    self.memory[to] as usize
+                } else {
+                    self.pc + 3
+                }
+            }
+            Instruction::Binary {
+                kind,
+                target,
+                op1,
+                op2,
+            } => {
+                let res = match kind {
+                    BinaryKind::Multiply => self.memory[op1] * self.memory[op2],
+                    BinaryKind::Plus => self.memory[op1] + self.memory[op2],
+                };
+                self.memory[target] = res;
+                self.pc + 4
+            }
+            Instruction::Halt => self.pc,
+            Instruction::Input { target } => {
+                print!(">");
+                io::stdout().flush().unwrap();
+                let mut buf = String::new();
+                self.memory[target] = match std::io::stdin().read_line(&mut buf) {
+                    Ok(_) => buf.trim().parse::<i64>().expect("Input was no number"),
+                    Err(_) => unimplemented!("Input was not possible"),
+                };
+                self.pc + 2
+            }
+            Instruction::Output { target } => {
+                println!("{}", self.memory[target]);
+                self.pc + 2
+            }
+        };
+        self.pc = new_pc;
+    }
+
     fn parse_instruction(&self) -> Instruction {
         let split = split_instruction(self.memory[self.pc]);
 
         match split {
             (1, mode1, mode2, mode3) | (2, mode1, mode2, mode3) => {
-                return Instruction::Binary(Binary {
+                return Instruction::Binary {
                     kind: if split.0 == 1 {
                         BinaryKind::Plus
                     } else {
@@ -174,20 +165,20 @@ impl<'a> Computer<'a> {
                     target: self.parameter_index(3, mode3),
                     op1: self.parameter_index(1, mode1),
                     op2: self.parameter_index(2, mode2),
-                })
+                }
             }
             (3, mode1, _, _) => {
-                return Instruction::Input(Input {
+                return Instruction::Input {
                     target: self.parameter_index(1, mode1),
-                })
+                }
             }
             (4, mode1, _, _) => {
-                return Instruction::Output(Output {
+                return Instruction::Output {
                     target: self.parameter_index(1, mode1),
-                })
+                }
             }
             (5, mode1, mode2, _) | (6, mode1, mode2, _) => {
-                return Instruction::Jump(Jump {
+                return Instruction::Jump {
                     kind: if split.0 == 5 {
                         JumpCondition::True
                     } else {
@@ -195,10 +186,10 @@ impl<'a> Computer<'a> {
                     },
                     cond: self.parameter_index(1, mode1),
                     to: self.parameter_index(2, mode2),
-                })
+                }
             }
             (7, mode1, mode2, mode3) | (8, mode1, mode2, mode3) => {
-                return Instruction::Comparison(Comparison {
+                return Instruction::Comparison {
                     kind: if split.0 == 7 {
                         ComparisonKind::LessThan
                     } else {
@@ -207,7 +198,7 @@ impl<'a> Computer<'a> {
                     target: self.parameter_index(3, mode3),
                     op1: self.parameter_index(1, mode1),
                     op2: self.parameter_index(2, mode2),
-                })
+                }
             }
             (99, _, _, _) => return Instruction::Halt,
             a => {
@@ -219,15 +210,7 @@ impl<'a> Computer<'a> {
 
     fn step(&mut self) {
         let ins = self.parse_instruction();
-        //TODO: this is shit does rust have no abstraction to not require this here?
-        match ins {
-            Instruction::Halt => (),
-            Instruction::Binary(b) => b.execute(self),
-            Instruction::Output(o) => o.execute(self),
-            Instruction::Input(i) => i.execute(self),
-            Instruction::Jump(j) => j.execute(self),
-            Instruction::Comparison(c) => c.execute(self),
-        }
+        self.execute_instruction(ins);
     }
 
     fn finished(&self) -> bool {
